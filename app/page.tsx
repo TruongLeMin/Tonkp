@@ -3,16 +3,25 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTonConnectUI } from "@tonconnect/ui-react";
 import TonWeb from "tonweb";  // Import TonWeb
+import React from 'react';
+import { Button, Typography, Box, Snackbar } from "@mui/material";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import MuiAlert, { AlertProps } from '@mui/material/Alert';
 
 const tonWeb = new TonWeb(new TonWeb.HttpProvider("https://testnet.toncenter.com/api/v2/jsonRPC", {
   apiKey: "fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe"  // Replace with your TON Center API Key for testnet
 }));
+
+const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert(props, ref) {
+  return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
+});
 
 export default function Home() {
   const [tonConnectUI] = useTonConnectUI();
   const [tonWalletAddress, setTonWalletAddress] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
 
   const handleWalletConnection = useCallback((address: string) => {
     setTonWalletAddress(address);
@@ -38,7 +47,13 @@ export default function Home() {
       console.error("Failed to retrieve balance:", error);
     }
   };
-  
+
+  const handleCopyAddress = () => {
+    if (tonWalletAddress) {
+      navigator.clipboard.writeText(tonWalletAddress);
+      setSnackbarOpen(true);
+    }
+  };
 
   useEffect(() => {
     const checkWalletConnection = async () => {
@@ -89,26 +104,46 @@ export default function Home() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center">
-      <h1 className="text-4xl font-bold mb-8">TON Connect Demo</h1>
+      <h1 className="text-4xl font-bold mb-8">TON Connect</h1>
       {tonWalletAddress ? (
-        <div className="flex flex-col items-center">
-          <p className="mb-4">Connected: {formatAddress(tonWalletAddress)}</p>
-          <p className="mb-4">Balance: {walletBalance !== null ? `${walletBalance} TON` : "Loading..."}</p>
-          <button
+        <Box display="flex" flexDirection="column" alignItems="center">
+          <Typography variant="h6" className="mb-4">
+            Connected: {formatAddress(tonWalletAddress)}
+            <Button
+              onClick={handleCopyAddress}
+              size="small"
+              color="primary"
+              startIcon={<ContentCopyIcon />}
+              style={{ marginLeft: "8px" }}
+            >
+              Copy
+            </Button>
+          </Typography>
+          <Typography variant="h6" className="mb-4">
+            Balance: {walletBalance !== null ? `${walletBalance} TON` : "Loading..."}
+          </Typography>
+          <Button
             onClick={handleWalletAction}
-            className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+            variant="contained"
+            color="error"
           >
             Disconnect Wallet
-          </button>
-        </div>
+          </Button>
+        </Box>
       ) : (
-        <button
+        <Button
           onClick={handleWalletAction}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+          variant="contained"
+          color="primary"
         >
           Connect TON Wallet
-        </button>
+        </Button>
       )}
+      <Snackbar open={snackbarOpen} autoHideDuration={2000} onClose={() => setSnackbarOpen(false)}>
+        <Alert onClose={() => setSnackbarOpen(false)} severity="success">
+          Address copied to clipboard!
+        </Alert>
+      </Snackbar>
     </main>
   );
 }
