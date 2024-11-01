@@ -4,7 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import { useTonConnectUI } from "@tonconnect/ui-react";
 import TonWeb from "tonweb";
 import React from "react";
-import { Button, Typography, Box, Snackbar, TextField, IconButton } from "@mui/material";
+import {
+  Button,
+  Typography,
+  Box,
+  Snackbar,
+  TextField,
+  IconButton,
+} from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MuiAlert, { AlertProps } from "@mui/material/Alert";
 import QRCode from "react-qr-code";
@@ -36,19 +43,26 @@ export default function Home() {
   const [jettonBalances, setJettonBalances] = useState<JettonBalance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [transactionStatus, setTransactionStatus] = useState<string | null>(null);
+  const [transactionStatus, setTransactionStatus] = useState<string | null>(
+    null
+  );
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
   const [transactionInfo, setTransactionInfo] = useState<any>(null);
   const [recipientAddress, setRecipientAddress] = useState<string>("");
   const [amountTON, setAmountTON] = useState<number | string>("");
   const [showQRCode, setShowQRCode] = useState(false);
+  const [isTransactionSuccessful, setIsTransactionSuccessful] = useState<
+    boolean | null
+  >(null);
+  const [isTransactionInfoNotFound, setIsTransactionInfoNotFound] =
+    useState(false);
 
   const handleWalletConnection = useCallback((address: string) => {
     setTonWalletAddress(address);
     console.log("Wallet connected successfully!");
     setIsLoading(false);
     fetchWalletBalance(address);
-    fetchJettonBalances(address).then(setJettonBalances);
+    //fetchJettonBalances(address).then(setJettonBalances);
   }, []);
 
   const handleWalletDisconnection = useCallback(async () => {
@@ -65,7 +79,6 @@ export default function Home() {
       console.log("Wallet is not connected, no action taken.");
     }
   }, [tonConnectUI]);
-  
 
   const fetchWalletBalance = async (address: string) => {
     try {
@@ -78,37 +91,65 @@ export default function Home() {
     }
   };
 
-  const fetchJettonBalances = async (address: string) => {
+  const fetchAllTokensBalances = async (address: string) => {
     try {
-      const jettons = [
-        {
-          address: "kQAaBKLsi6XsHNEqZekJObfcduUS-awFE8Jq1KqGo7gfmeCD",
-          symbol: "Glutami",
-        },
-        {
-          address: "jetton_contract_address_2",
-          symbol: "JET2",
-        },
-      ];
-
-      const balances = await Promise.all(
-        jettons.map(async (jetton) => {
-          const jettonContract = tonWeb.jetton.create(jetton.address);
-          const balance = await jettonContract.getBalance(address);
-          return {
-            address: jetton.address,
-            symbol: jetton.symbol,
-            balance: Number(balance) / 1e9,
-          };
-        })
+      const response = await fetch(
+        `https://testnet.toncenter.com/api/v2/getJettons?address=${address}&api_key=fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe`
       );
 
-      return balances;
+      // Check if the response is okay
+      if (!response.ok) {
+        console.error(
+          `Error fetching tokens: ${response.status} ${response.statusText}`
+        );
+        return;
+      }
+
+      const data = await response.json();
+
+      // if (data.result && Array.isArray(data.result)) {
+      //   const tokenBalances = await Promise.all(
+      //     data.result.map(async (token: any) => {
+      //       const jettonAddress = token.jetton_master;
+      //       const jettonContract = tonWeb.jetton.create(jettonAddress);
+      //       const balance = await jettonContract.getBalance(address);
+      //       return {
+      //         address: jettonAddress,
+      //         symbol: token.symbol || "Unknown",
+      //         balance: Number(balance) / 1e9,
+      //       };
+      //     })
+      //   );
+
+      //   setJettonBalances(tokenBalances);
+      // }
     } catch (error) {
-      console.error("Failed to retrieve Jetton balances:", error);
-      return [];
+      console.error("Failed to fetch tokens:", error);
     }
   };
+
+  // Step 2: Call this function in `useEffect` when wallet connects
+  useEffect(() => {
+    if (tonWalletAddress) {
+      fetchAllTokensBalances(tonWalletAddress);
+    }
+  }, [tonWalletAddress]);
+
+  // Step 3: Render each token’s balance in the UI
+  {
+    jettonBalances.length > 0 && (
+      <div>
+        <Typography variant="h6">Token Balances:</Typography>
+        <ul>
+          {jettonBalances.map((token) => (
+            <li key={token.address}>
+              {token.symbol}: {token.balance}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
 
   const handleCopyAddress = () => {
     if (tonWalletAddress) {
@@ -173,68 +214,106 @@ export default function Home() {
       const response = await tonConnectUI.sendTransaction(transaction);
       console.log("Transaction response:", response);
 
-      // Retrieve transaction hash from Ton Center API
-      const fetchTransactionHash = async () => {
-        try {
-          const url = `https://testnet.toncenter.com/api/v2/getTransactions?address=${tonWalletAddress}&limit=1&api_key=fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe`;
-          const res = await fetch(url);
-          const data = await res.json();
-
-          if (data.result.length > 0) {
-            const hash = data.result[0].transaction_id.hash;
-            setTransactionHash(hash);
-            setTransactionStatus("Transaction successful!");
-
-            // Fetch transaction info
-            fetchTransactionInfo(hash);
-          } else {
-            setTransactionStatus("Transaction completed, but hash could not be retrieved.");
-          }
-        } catch (error) {
-          console.error("Failed to fetch transaction hash:", error);
-          setTransactionStatus("Transaction successful, but hash retrieval failed.");
-        }
-      };
-
       setTransactionStatus("Transaction in progress...");
-      fetchTransactionHash();
+
+      // Add a slight delay before fetching the transaction hash
+      setTimeout(() => {
+        fetchTransactionHash();
+      }, 5000); // Adjust the delay as necessary
     } catch (error) {
       console.error("Failed to execute TON transfer:", error);
       setTransactionStatus("Transaction failed.");
+      setIsTransactionSuccessful(false);
+    }
+  };
+
+  const fetchTransactionHash = async (retries = 5, delay = 2000) => {
+    try {
+      const url = `https://testnet.toncenter.com/api/v2/getTransactions?address=${tonWalletAddress}&limit=1&api_key=fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.result.length > 0) {
+        const hash = data.result[0].transaction_id.hash;
+        setTransactionHash(hash);
+        setTransactionStatus("Transaction successful!");
+        setIsTransactionSuccessful(true);
+        fetchTransactionInfo(hash);
+      } else {
+        if (retries > 0) {
+          console.log(`Retrying... (${retries} attempts left)`);
+          setTimeout(() => fetchTransactionHash(retries - 1, delay), delay);
+        } else {
+          setTransactionStatus(
+            "Transaction completed, but hash could not be retrieved."
+          );
+          setIsTransactionSuccessful(false);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch transaction hash:", error);
+      setTransactionStatus(
+        "Transaction successful, but hash retrieval failed."
+      );
+      setIsTransactionSuccessful(false);
     }
   };
 
   const fetchTransactionInfo = async (hash: string) => {
     try {
-      // Ensure that wallet address is defined
       if (!tonWalletAddress) {
-        throw new Error("Wallet address is required to fetch transaction info.");
+        throw new Error(
+          "Wallet address is required to fetch transaction info."
+        );
       }
-  
+
+      if (!hash || typeof hash !== "string") {
+        throw new Error("Invalid transaction hash.");
+      }
+
       const url = `https://testnet.toncenter.com/api/v2/getTransactions?address=${tonWalletAddress}&limit=1&hash=${hash}&api_key=fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe`;
+      console.log("Fetching transaction info from URL:", url);
+
       const res = await fetch(url);
       const data = await res.json();
-  
+
       console.log("Transaction Info Response:", data); // Log response
-  
-      if (data.result.length > 0) {
+
+      if (
+        data.ok &&
+        data.result &&
+        Array.isArray(data.result) &&
+        data.result.length > 0
+      ) {
         const txInfo = data.result[0];
+
+        // Check if in_message exists before accessing its properties
+        const inMessage = txInfo.in_message || {};
+        const amount = parseFloat(inMessage.value) / 1e9; // Ensure amount is a number
+        const timestamp = txInfo.created_at
+          ? new Date(txInfo.created_at * 1000).toLocaleString()
+          : "Invalid Date"; // Handle date conversion
+
         setTransactionInfo({
-          from: txInfo.in_message.from,
-          to: txInfo.in_message.to,
-          amount: Number(txInfo.in_message.value) / 1e9,
-          status: txInfo.status,
-          timestamp: new Date(txInfo.created_at * 1000).toLocaleString(),
-          logicalTime: txInfo.logical_time,
-          fee: Number(txInfo.fee) / 1e9,
+          from: inMessage.from || "Unknown",
+          to: inMessage.to || "Unknown",
+          amount: !isNaN(amount) ? `${amount} TON` : "Invalid Amount", // Fallback for NaN
+          status: txInfo.status || "Unknown",
+          timestamp: timestamp,
+          fee: `${Number(txInfo.fee) / 1e9} TON`, // Ensure fee is formatted correctly
+          logicalTime: txInfo.logical_time || "N/A", // Fallback for logical time
         });
+
         setTransactionStatus("Transaction info retrieved successfully!");
+        setIsTransactionInfoNotFound(false); // Reset the not found state
       } else {
         setTransactionStatus("Transaction info not found.");
+        setIsTransactionInfoNotFound(true); // Set the not found state
       }
     } catch (error) {
       console.error("Failed to fetch transaction info:", error);
       setTransactionStatus("Failed to retrieve transaction info.");
+      setIsTransactionInfoNotFound(true);
     }
   };
 
@@ -263,7 +342,11 @@ export default function Home() {
         <div>
           <Typography variant="h6" gutterBottom>
             Connected Wallet: {formatAddress(tonWalletAddress)}
-            <IconButton onClick={handleCopyAddress} color="primary" style={{ marginLeft: "10px" }}>
+            <IconButton
+              onClick={handleCopyAddress}
+              color="primary"
+              style={{ marginLeft: "10px" }}
+            >
               <ContentCopyIcon />
             </IconButton>
             <Button
@@ -328,6 +411,21 @@ export default function Home() {
           >
             Transfer TON
           </Button>
+          {transactionStatus && (
+            <Alert
+              severity={
+                isTransactionSuccessful
+                  ? "success"
+                  : isTransactionInfoNotFound
+                  ? "error"
+                  : "info"
+              }
+              sx={{ mt: 2 }}
+            >
+              {transactionStatus}
+            </Alert>
+          )}
+
           {transactionHash && (
             <Typography variant="body1" gutterBottom>
               Transaction Hash: {transactionHash}
@@ -336,13 +434,25 @@ export default function Home() {
           {transactionInfo && (
             <div>
               <Typography variant="h6">Transaction Info:</Typography>
-              <Typography variant="body1">From: {transactionInfo.from}</Typography>
+              <Typography variant="body1">
+                From: {transactionInfo.from}
+              </Typography>
               <Typography variant="body1">To: {transactionInfo.to}</Typography>
-              <Typography variant="body1">Amount: {transactionInfo.amount} TON</Typography>
-              <Typography variant="body1">Status: {transactionInfo.status}</Typography>
-              <Typography variant="body1">Timestamp: {transactionInfo.timestamp}</Typography>
-              <Typography variant="body1">Fee: {transactionInfo.fee} TON</Typography>
-              <Typography variant="body1">Logical Time: {transactionInfo.logicalTime}</Typography>
+              <Typography variant="body1">
+                Amount: {transactionInfo.amount}
+              </Typography>
+              <Typography variant="body1">
+                Status: {transactionInfo.status}
+              </Typography>
+              <Typography variant="body1">
+                Timestamp: {transactionInfo.timestamp}
+              </Typography>
+              <Typography variant="body1">
+                Fee: {transactionInfo.fee}
+              </Typography>
+              <Typography variant="body1">
+                Logical Time: {transactionInfo.logicalTime}
+              </Typography>
             </div>
           )}
         </div>
