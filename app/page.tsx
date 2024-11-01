@@ -3,16 +3,23 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTonConnectUI } from "@tonconnect/ui-react";
 import TonWeb from "tonweb";
-import React from 'react';
+import React from "react";
 import { Button, Typography, Box, Snackbar, TextField } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import MuiAlert, { AlertProps } from '@mui/material/Alert';
+import MuiAlert, { AlertProps } from "@mui/material/Alert";
+import QRCode from "react-qr-code";
 
-const tonWeb = new TonWeb(new TonWeb.HttpProvider("https://testnet.toncenter.com/api/v2/jsonRPC", {
-  apiKey: "fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe"
-}));
 
-const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert(props, ref) {
+const tonWeb = new TonWeb(
+  new TonWeb.HttpProvider("https://testnet.toncenter.com/api/v2/jsonRPC", {
+    apiKey: "fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe",
+  })
+);
+
+const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert(
+  props,
+  ref
+) {
   return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
 });
 
@@ -23,8 +30,9 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [transactionStatus, setTransactionStatus] = useState<string | null>(null);
-  const [recipientAddress, setRecipientAddress] = useState<string>('');
-  const [amountTON, setAmountTON] = useState<number | string>('');
+  const [recipientAddress, setRecipientAddress] = useState<string>("");
+  const [amountTON, setAmountTON] = useState<number | string>("");
+  const [showQRCode, setShowQRCode] = useState(false); // State để hiển thị QR code
 
   const handleWalletConnection = useCallback((address: string) => {
     setTonWalletAddress(address);
@@ -126,6 +134,10 @@ export default function Home() {
     return `${address.slice(0, 4)}...${address.slice(-4)}`;
   };
 
+  const handleShowQRCode = () => {
+    setShowQRCode((prev) => !prev); // Chuyển trạng thái hiển thị QR code
+  };
+
   if (isLoading) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center">
@@ -143,7 +155,13 @@ export default function Home() {
         <Box display="flex" flexDirection="column" alignItems="center">
           <Typography variant="h6" className="mb-4">
             Connected: {formatAddress(tonWalletAddress)}
-            <Button onClick={handleCopyAddress} size="small" color="primary" startIcon={<ContentCopyIcon />} style={{ marginLeft: "8px" }}>
+            <Button
+              onClick={handleCopyAddress}
+              size="small"
+              color="primary"
+              startIcon={<ContentCopyIcon />}
+              style={{ marginLeft: "8px" }}
+            >
               Copy
             </Button>
           </Typography>
@@ -167,13 +185,38 @@ export default function Home() {
             fullWidth
             margin="normal"
           />
-          <Button onClick={transferWithHashRetrieval} variant="contained" color="primary">
+          <Button
+            onClick={transferWithHashRetrieval}
+            variant="contained"
+            color="primary"
+          >
             Transfer TON
           </Button>
+          <Button
+            onClick={handleShowQRCode}
+            variant="contained"
+            color="secondary"
+            style={{ marginTop: '16px' }}
+          >
+            {showQRCode ? "Hide QR Code" : "Show QR Code"}
+          </Button>
+          {showQRCode && (
+            <Box marginTop={2}>
+              <QRCode value={tonWalletAddress} size={128} /> {/* Hiển thị QR code với địa chỉ ví */}
+              <Typography variant="caption" style={{ marginTop: '8px' }}>
+                Scan to receive TON
+              </Typography>
+            </Box>
+          )}
           <Typography variant="body2" style={{ marginTop: '8px' }}>
             Transaction Status: {transactionStatus || "No transaction"}
           </Typography>
-          <Button onClick={handleWalletAction} variant="contained" color="error" style={{ marginTop: '16px' }}>
+          <Button
+            onClick={handleWalletAction}
+            variant="contained"
+            color="error"
+            style={{ marginTop: '16px' }}
+          >
             Disconnect Wallet
           </Button>
         </Box>
@@ -182,7 +225,11 @@ export default function Home() {
           Connect TON Wallet
         </Button>
       )}
-      <Snackbar open={snackbarOpen} autoHideDuration={2000} onClose={() => setSnackbarOpen(false)}>
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={2000}
+        onClose={() => setSnackbarOpen(false)}
+      >
         <Alert onClose={() => setSnackbarOpen(false)} severity="success">
           Address copied to clipboard!
         </Alert>
