@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTonConnectUI } from "@tonconnect/ui-react";
-import TonWeb from "tonweb";  // Import TonWeb
+import TonWeb from "tonweb";
 import React from 'react';
-import { Button, Typography, Box, Snackbar } from "@mui/material";
+import { Button, Typography, Box, Snackbar, TextField } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MuiAlert, { AlertProps } from '@mui/material/Alert';
 
 const tonWeb = new TonWeb(new TonWeb.HttpProvider("https://testnet.toncenter.com/api/v2/jsonRPC", {
-  apiKey: "fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe"  // Replace with your TON Center API Key for testnet
+  apiKey: "fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe"
 }));
 
 const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert(props, ref) {
@@ -22,6 +22,9 @@ export default function Home() {
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [transactionStatus, setTransactionStatus] = useState<string | null>(null);
+  const [recipientAddress, setRecipientAddress] = useState<string>('');
+  const [amountTON, setAmountTON] = useState<number | string>('');
 
   const handleWalletConnection = useCallback((address: string) => {
     setTonWalletAddress(address);
@@ -41,7 +44,7 @@ export default function Home() {
     try {
       const walletAddress = new TonWeb.utils.Address(address);
       const balance = await tonWeb.getBalance(walletAddress);
-      const balanceInTON = Number(balance) / 1e9; // Convert to TON from nanoton
+      const balanceInTON = Number(balance) / 1e9;
       setWalletBalance(balanceInTON);
     } catch (error) {
       console.error("Failed to retrieve balance:", error);
@@ -88,6 +91,37 @@ export default function Home() {
     }
   };
 
+  const transferWithHashRetrieval = async () => {
+    const amount = parseFloat(amountTON as string);
+    if (!recipientAddress || isNaN(amount)) {
+      setTransactionStatus("Invalid input");
+      return;
+    }
+
+    // Tạo yêu cầu giao dịch
+    const amountInNanoTON = TonWeb.utils.toNano(amount.toString());
+    const transaction = {
+      validUntil: Math.floor(Date.now() / 1000) + 60, // Thời gian hết hạn giao dịch
+      messages: [
+        {
+          address: recipientAddress,
+          amount: amountInNanoTON.toString(),
+          payload: "", // Để trống nếu không có payload đặc biệt
+        },
+      ],
+    };
+
+    try {
+      // Gửi yêu cầu giao dịch qua TonConnect UI
+      const response = await tonConnectUI.sendTransaction(transaction);
+      console.log("Transaction response:", response);
+      setTransactionStatus("Transaction in progress...");
+    } catch (error) {
+      console.error("Failed to execute TON transfer:", error);
+      setTransactionStatus("Transaction failed.");
+    }
+  };
+
   const formatAddress = (address: string) => {
     return `${address.slice(0, 4)}...${address.slice(-4)}`;
   };
@@ -109,33 +143,42 @@ export default function Home() {
         <Box display="flex" flexDirection="column" alignItems="center">
           <Typography variant="h6" className="mb-4">
             Connected: {formatAddress(tonWalletAddress)}
-            <Button
-              onClick={handleCopyAddress}
-              size="small"
-              color="primary"
-              startIcon={<ContentCopyIcon />}
-              style={{ marginLeft: "8px" }}
-            >
+            <Button onClick={handleCopyAddress} size="small" color="primary" startIcon={<ContentCopyIcon />} style={{ marginLeft: "8px" }}>
               Copy
             </Button>
           </Typography>
           <Typography variant="h6" className="mb-4">
             Balance: {walletBalance !== null ? `${walletBalance} TON` : "Loading..."}
           </Typography>
-          <Button
-            onClick={handleWalletAction}
-            variant="contained"
-            color="error"
-          >
+          <TextField
+            label="Recipient Address"
+            variant="outlined"
+            value={recipientAddress}
+            onChange={(e) => setRecipientAddress(e.target.value)}
+            fullWidth
+            margin="normal"
+          />
+          <TextField
+            label="Amount (TON)"
+            variant="outlined"
+            type="number"
+            value={amountTON}
+            onChange={(e) => setAmountTON(e.target.value)}
+            fullWidth
+            margin="normal"
+          />
+          <Button onClick={transferWithHashRetrieval} variant="contained" color="primary">
+            Transfer TON
+          </Button>
+          <Typography variant="body2" style={{ marginTop: '8px' }}>
+            Transaction Status: {transactionStatus || "No transaction"}
+          </Typography>
+          <Button onClick={handleWalletAction} variant="contained" color="error" style={{ marginTop: '16px' }}>
             Disconnect Wallet
           </Button>
         </Box>
       ) : (
-        <Button
-          onClick={handleWalletAction}
-          variant="contained"
-          color="primary"
-        >
+        <Button onClick={handleWalletAction} variant="contained" color="primary">
           Connect TON Wallet
         </Button>
       )}
