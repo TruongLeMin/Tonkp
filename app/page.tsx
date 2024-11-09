@@ -78,28 +78,41 @@ export default function Home() {
       console.error("Failed to retrieve balance:", error);
     }
   };
-  
+
   const fetchJettonBalances = async (address: string) => {
     try {
       const url = `https://testnet.toncenter.com/api/v2/getJettonBalances?address=${address}&api_key=fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe`;
       const response = await fetch(url);
+
+      if (!response.ok) {
+        console.error("Error fetching Jetton balances:", response.statusText);
+        return [];
+      }
+
       const data = await response.json();
-  
+
       if (data.ok && data.result) {
-        const balances = data.result.map((jetton: any) => ({
-          address: jetton.jetton_address,
-          symbol: jetton.symbol,
-          balance: jetton.balance,
-        }));
-        setJettonBalances(balances);
+        console.log("Jetton balances:", data.result);
+        setJettonBalances(data.result); // Lưu trữ dữ liệu jetton
       } else {
-        console.error("Failed to retrieve Jetton balances:", data);
+        console.log("No Jetton found for this wallet.");
+        setJettonBalances([]); // Không có Jetton
       }
     } catch (error) {
       console.error("Error fetching Jetton balances:", error);
+      setJettonBalances([]); // Đặt giá trị mặc định là mảng rỗng
     }
   };
-  
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (tonWalletAddress) {
+        fetchWalletBalance(tonWalletAddress);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [tonWalletAddress]);
 
   const handleCopyAddress = () => {
     if (tonWalletAddress) {
@@ -213,14 +226,12 @@ export default function Home() {
       const tonAddress = new TonWeb.utils.Address(address);
       // false for non-bounceable
       const friendlyAddress = tonAddress.toString(true, true, false, true);
-       return `${friendlyAddress.slice(0, 4)}...${friendlyAddress.slice(-4)}`;
-      
+      return `${friendlyAddress.slice(0, 4)}...${friendlyAddress.slice(-4)}`;
     } catch (error) {
       console.error("Invalid address format:", error);
       return `${address.slice(0, 4)}...${address.slice(-4)}`;
     }
   };
-  
 
   const handleShowQRCode = () => {
     setShowQRCode((prev) => !prev);
