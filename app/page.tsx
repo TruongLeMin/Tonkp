@@ -11,10 +11,35 @@ import {
   Snackbar,
   TextField,
   IconButton,
+  List,
+  ListItem,
+  ListItemText,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MuiAlert, { AlertProps } from "@mui/material/Alert";
 import QRCode from "react-qr-code";
+
+interface MintlessInfo {
+  amount: string;
+  custom_payload_api_uri: string[];
+  expire_at: number;
+  start_from: number;
+}
+
+interface JettonWallet {
+  address: string;
+  balance: string;
+  code_hash: string;
+  data_hash: string;
+  jetton: string;
+  last_transaction_lt: string;
+  mintless_info: MintlessInfo;
+  owner: string;
+  jetton_metadata?: {
+    name?: string;
+    symbol?: string;
+  };
+}
 
 const tonWeb = new TonWeb(
   new TonWeb.HttpProvider("https://testnet.toncenter.com/api/v2/jsonRPC", {
@@ -33,7 +58,7 @@ export default function Home() {
   const [tonConnectUI] = useTonConnectUI();
   const [tonWalletAddress, setTonWalletAddress] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
-  const [jettonBalances, setJettonBalances] = useState<any[]>([]);
+  const [jettonWallets, setJettonWallets] = useState<JettonWallet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [transactionStatus, setTransactionStatus] = useState<string | null>(
@@ -52,7 +77,7 @@ export default function Home() {
     console.log("Wallet connected successfully!");
     setIsLoading(false);
     fetchWalletBalance(address);
-    fetchJettonBalances(address);
+    fetchJettonWallets(address);
   }, []);
 
   const handleWalletDisconnection = useCallback(async () => {
@@ -79,31 +104,46 @@ export default function Home() {
     }
   };
 
-  const fetchJettonBalances = async (address: string) => {
+  const fetchJettonWallets = async (address: string): Promise<any[]> => {
     try {
-      const url = `https://testnet.toncenter.com/api/v2/getJettonBalances?address=${address}&api_key=fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe`;
+      // Thiết lập URL với các tham số cần thiết
+      const url = `https://testnet.toncenter.com/api/v3/jetton/wallets?owner_address=${address}&exclude_zero_balance=true&limit=10&api_key=fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe`;
       const response = await fetch(url);
-
-      if (!response.ok) {
-        console.error("Error fetching Jetton balances:", response.statusText);
-        return [];
-      }
-
       const data = await response.json();
 
-      if (data.ok && data.result) {
-        console.log("Jetton balances:", data.result);
-        setJettonBalances(data.result); // Lưu trữ dữ liệu jetton
+      if (data.jetton_wallets && Array.isArray(data.jetton_wallets)) {
+        // Chuyển đổi dữ liệu ví Jetton thành mảng tài sản dễ đọc
+        return data.jetton_wallets.map((wallet: JettonWallet) => ({
+          name: wallet.jetton_metadata?.name || "Unknown Token",
+          symbol: wallet.jetton_metadata?.symbol || "N/A",
+          balance: (Number(wallet.balance) / 1e9).toFixed(4), // Chuyển từ nanoTON sang TON
+          address: wallet.address,
+          owner: wallet.owner,
+          last_transaction: wallet.last_transaction_lt,
+        }));
       } else {
-        console.log("No Jetton found for this wallet.");
-        setJettonBalances([]); // Không có Jetton
+        console.error("No jetton wallets found for this address.");
+        return [];
       }
     } catch (error) {
-      console.error("Error fetching Jetton balances:", error);
-      setJettonBalances([]); // Đặt giá trị mặc định là mảng rỗng
+      console.error("Failed to retrieve jetton wallets:", error);
+      return [];
     }
   };
 
+  useEffect(() => {
+    const fetchData = async () => {
+      if (tonWalletAddress) {
+        // Lấy ví Jetton
+        const jettonWallets = await fetchJettonWallets(tonWalletAddress);
+        setJettonWallets(jettonWallets); // Cập nhật trạng thái với danh sách ví Jetton
+      }
+    };
+
+    fetchData();
+  }, [tonWalletAddress]);
+
+  // load so du 5s
   useEffect(() => {
     const interval = setInterval(() => {
       if (tonWalletAddress) {
@@ -225,7 +265,7 @@ export default function Home() {
     try {
       const tonAddress = new TonWeb.utils.Address(address);
       // false for non-bounceable
-      const friendlyAddress = tonAddress.toString(true, true, false, true);
+      const friendlyAddress = tonAddress.toString(true, true, false, true); // base64,...,Bounceable=true, testnet=true
       return `${friendlyAddress.slice(0, 4)}...${friendlyAddress.slice(-4)}`;
     } catch (error) {
       console.error("Invalid address format:", error);
@@ -286,24 +326,22 @@ export default function Home() {
           <Typography variant="body1" gutterBottom>
             Wallet Balance: {walletBalance} TON
           </Typography>
-          {/* Display Jetton Balances */}
-          {jettonBalances.length > 0 ? (
-            <div>
-              <Typography variant="h6" gutterBottom>
-                Jetton Balances:
-              </Typography>
-              <ul>
-                {jettonBalances.map((jetton) => (
-                  <li key={jetton.address}>
-                    <Typography variant="body1">
-                      {jetton.symbol}: {jetton.balance / 1e9} {jetton.symbol}
-                    </Typography>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {/* Hiển thị ví Jetton */}
+          {jettonWallets.length > 0 ? (
+            <List>
+              {jettonWallets.map((wallet, index) => (
+                <ListItem key={index}>
+                  <ListItemText
+                    primary={`${
+                      wallet.jetton_metadata?.name || "Unknown Token"
+                    } (${wallet.jetton_metadata?.symbol || "N/A"})`}
+                    secondary={`Balance: ${wallet.balance} | Address: ${wallet.address}`}
+                  />
+                </ListItem>
+              ))}
+            </List>
           ) : (
-            <Typography variant="body1">No Jetton Balances found.</Typography>
+            <Typography variant="body1">No Jetton wallets found.</Typography>
           )}
           <TextField
             label="Recipient Address"
