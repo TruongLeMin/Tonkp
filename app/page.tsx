@@ -19,26 +19,13 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MuiAlert, { AlertProps } from "@mui/material/Alert";
 import QRCode from "react-qr-code";
 
-interface MintlessInfo {
-  amount: string;
-  custom_payload_api_uri: string[];
-  expire_at: number;
-  start_from: number;
-}
-
-interface JettonWallet {
+interface Jetton {
+  name: string;
+  symbol: string;
+  image: string;
+  description: string;
   address: string;
   balance: string;
-  code_hash: string;
-  data_hash: string;
-  jetton: string;
-  last_transaction_lt: string;
-  mintless_info: MintlessInfo;
-  owner: string;
-  jetton_metadata?: {
-    name?: string;
-    symbol?: string;
-  };
 }
 
 const tonWeb = new TonWeb(
@@ -58,7 +45,7 @@ export default function Home() {
   const [tonConnectUI] = useTonConnectUI();
   const [tonWalletAddress, setTonWalletAddress] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
-  const [jettonWallets, setJettonWallets] = useState<JettonWallet[]>([]);
+  const [jettons, setJettons] = useState<Jetton[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [transactionStatus, setTransactionStatus] = useState<string | null>(
@@ -77,7 +64,7 @@ export default function Home() {
     console.log("Wallet connected successfully!");
     setIsLoading(false);
     fetchWalletBalance(address);
-    fetchJettonWallets(address);
+    fetchJettonsWallet(address);
   }, []);
 
   const handleWalletDisconnection = useCallback(async () => {
@@ -104,50 +91,37 @@ export default function Home() {
     }
   };
 
-  const fetchJettonWallets = async (address: string): Promise<any[]> => {
+  const fetchJettonsWallet = async (walletAddress: string) => {
     try {
-      // Thiết lập URL với các tham số cần thiết
-      const url = `https://testnet.toncenter.com/api/v3/jetton/wallets?owner_address=${address}&exclude_zero_balance=true&limit=10&api_key=fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe`;
-      const response = await fetch(url);
+      const response = await fetch(
+        `https://testnet.tonapi.io/v2/accounts/${walletAddress}/jettons`
+      );
       const data = await response.json();
 
-      if (data.jetton_wallets && Array.isArray(data.jetton_wallets)) {
-        // Chuyển đổi dữ liệu ví Jetton thành mảng tài sản dễ đọc
-        return data.jetton_wallets.map((wallet: JettonWallet) => ({
-          name: wallet.jetton_metadata?.name || "Unknown Token",
-          symbol: wallet.jetton_metadata?.symbol || "N/A",
-          balance: (Number(wallet.balance) / 1e9).toFixed(4), // Chuyển từ nanoTON sang TON
-          address: wallet.address,
-          owner: wallet.owner,
-          last_transaction: wallet.last_transaction_lt,
+      if (data.balances && Array.isArray(data.balances)) {
+        const jettonList = data.balances.map((jetton: any) => ({
+          name: jetton.jetton.name || "Unknown Jetton",
+          symbol: jetton.jetton.symbol || "N/A",
+          balance: (Number(jetton.balance) / 1e9).toFixed(2),
+          image: jetton.jetton.image || "",
+          address: jetton.jetton.address || "",
         }));
+
+        setJettons(jettonList);
       } else {
-        console.error("No jetton wallets found for this address.");
-        return [];
+        console.error("No jettons found in wallet.");
       }
     } catch (error) {
-      console.error("Failed to retrieve jetton wallets:", error);
-      return [];
+      console.error("Failed to fetch jettons in wallet:", error);
     }
   };
-
-  useEffect(() => {
-    const fetchData = async () => {
-      if (tonWalletAddress) {
-        // Lấy ví Jetton
-        const jettonWallets = await fetchJettonWallets(tonWalletAddress);
-        setJettonWallets(jettonWallets); // Cập nhật trạng thái với danh sách ví Jetton
-      }
-    };
-
-    fetchData();
-  }, [tonWalletAddress]);
 
   // load so du 5s
   useEffect(() => {
     const interval = setInterval(() => {
       if (tonWalletAddress) {
         fetchWalletBalance(tonWalletAddress);
+        fetchJettonsWallet(tonWalletAddress);
       }
     }, 5000);
 
@@ -327,22 +301,27 @@ export default function Home() {
             Wallet Balance: {walletBalance} TON
           </Typography>
           {/* Hiển thị ví Jetton */}
-          {jettonWallets.length > 0 ? (
+          <h4 className="text-2xl font-bold mb-4">Your List Jettons</h4>
+          {jettons.length > 0 ? (
             <List>
-              {jettonWallets.map((wallet, index) => (
+              {jettons.map((jetton, index) => (
                 <ListItem key={index}>
+                  <img
+                    src={jetton.image}
+                    alt={jetton.name}
+                    style={{ width: 50, height: 50, marginRight: 10 }}
+                  />
                   <ListItemText
-                    primary={`${
-                      wallet.jetton_metadata?.name || "Unknown Token"
-                    } (${wallet.jetton_metadata?.symbol || "N/A"})`}
-                    secondary={`Balance: ${wallet.balance} | Address: ${wallet.address}`}
+                    primary={`${jetton.name} (${jetton.symbol})`}
+                    secondary={`Balance: ${jetton.balance}`}
                   />
                 </ListItem>
               ))}
             </List>
           ) : (
-            <Typography variant="body1">No Jetton wallets found.</Typography>
+            <Typography variant="body1">No Jettons in Wallet.</Typography>
           )}
+
           <TextField
             label="Recipient Address"
             variant="outlined"
@@ -376,11 +355,11 @@ export default function Home() {
               {transactionStatus}
             </Alert>
           )}
-          {/* {transactionHash && (
+          {transactionHash && (
             <Typography variant="body1" gutterBottom>
               Transaction Hash: {transactionHash}
             </Typography>
-          )} */}
+          )}
         </div>
       ) : (
         <Button
