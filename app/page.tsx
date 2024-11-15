@@ -355,11 +355,11 @@ export default function Home() {
               {transactionStatus}
             </Alert>
           )}
-          {transactionHash && (
+          {/* {transactionHash && (
             <Typography variant="body1" gutterBottom>
               Transaction Hash: {transactionHash}
             </Typography>
-          )}
+          )} */}
         </div>
       ) : (
         <Button
