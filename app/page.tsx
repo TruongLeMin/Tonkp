@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { beginCell, toNano, Address } from "@ton/core";
 import { useTonConnectUI } from "@tonconnect/ui-react";
 import TonWeb from "tonweb";
 import React from "react";
@@ -18,6 +19,7 @@ import {
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MuiAlert, { AlertProps } from "@mui/material/Alert";
 import QRCode from "react-qr-code";
+import MenuItem from "@mui/material/MenuItem"; // Import MenuItem
 
 interface Jetton {
   name: string;
@@ -58,6 +60,10 @@ export default function Home() {
   const [isTransactionSuccessful, setIsTransactionSuccessful] = useState<
     boolean | null
   >(null);
+  const [selectedJetton, setSelectedJetton] = useState<string>(""); // Declare selectedJetton
+  const [jettonRecipientAddress, setJettonRecipientAddress] =
+    useState<string>("");
+  const [jettonAmount, setJettonAmount] = useState<string>("");
 
   const handleWalletConnection = useCallback((address: string) => {
     setTonWalletAddress(address);
@@ -116,6 +122,67 @@ export default function Home() {
     }
   };
 
+  const transferJetton = async () => {
+    if (!selectedJetton || !jettonRecipientAddress || !jettonAmount) {
+      setTransactionStatus("Please fill all fields.");
+      return;
+    }
+
+    try {
+      // Parse the recipient address and Jetton Wallet Contract
+      const destinationAddress = Address.parse(jettonRecipientAddress);
+      const jettonWalletContract = Address.parse(selectedJetton);
+
+      console.log("jettonRecipientAddress", jettonRecipientAddress);
+      console.log("selectedJetton", selectedJetton);
+      // Create the forward payload (for optional comment or metadata)
+      const forwardPayload = beginCell()
+        .storeUint(0, 32) // opcode for comment
+        .storeStringTail("Jetton transfer from dApp") // Comment
+        .endCell();
+
+      // Build the Jetton transfer payload
+      const body = beginCell()
+        .storeUint(0xf8a7ea5, 32) // opcode for Jetton transfer
+        .storeUint(0, 64) // query_id (optional transaction identifier)
+        .storeCoins(toNano(jettonAmount)) // Amount of Jettons
+        .storeAddress(destinationAddress) // Recipient address
+        .storeAddress(
+          Address.parse(
+            "0:0000000000000000000000000000000000000000000000000000000000000000"
+          )
+        ) // Response address
+        .storeBit(0) // No custom payload
+        .storeCoins(toNano("0.02")) // Transaction fees
+        .storeBit(1) // Forward payload stored as reference
+        .storeRef(forwardPayload) // Include forwardPayload
+        .endCell();
+
+      // Define the transaction
+      const transaction = {
+        validUntil: Math.floor(Date.now() / 1000) + 360, // Transaction expires after 360 seconds
+        messages: [
+          {
+            address: jettonWalletContract.toString(), // Jetton Wallet Contract Address
+            amount: toNano("0.05").toString(), // Network fees for transaction
+            payload: body.toBoc().toString("base64"), // Encoded payload
+          },
+        ],
+      };
+
+      // Send the transaction using TonConnectUI
+      await tonConnectUI.sendTransaction(transaction);
+      setTransactionStatus("Jetton transaction sent successfully!");
+      setIsTransactionSuccessful(true);
+    } catch (error) {
+      console.error("Jetton transfer failed:", error);
+      setTransactionStatus(
+        "Jetton transfer failed. Check the console for details."
+      );
+      setIsTransactionSuccessful(false);
+    }
+  };
+
   // load so du 5s
   useEffect(() => {
     const interval = setInterval(() => {
@@ -137,10 +204,16 @@ export default function Home() {
 
   useEffect(() => {
     const checkWalletConnection = async () => {
-      if (tonConnectUI.account?.address) {
-        handleWalletConnection(tonConnectUI.account?.address);
-      } else {
-        handleWalletDisconnection();
+      try {
+        if (tonConnectUI.account?.address) {
+          handleWalletConnection(tonConnectUI.account?.address);
+        } else {
+          handleWalletDisconnection();
+        }
+      } catch (error) {
+        console.error("Error during wallet connection check:", error);
+      } finally {
+        setIsLoading(false); // Đảm bảo trạng thái được cập nhật
       }
     };
 
@@ -170,11 +243,10 @@ export default function Home() {
 
   const transferWithHashRetrieval = async () => {
     const amount = parseFloat(amountTON as string);
-    if (!recipientAddress || isNaN(amount)) {
-      setTransactionStatus("Invalid input");
+    if (!recipientAddress || isNaN(amount) || amount <= 0) {
+      setTransactionStatus("Invalid amount");
       return;
     }
-
     const amountInNanoTON = TonWeb.utils.toNano(amount.toString());
     const transaction = {
       validUntil: Math.floor(Date.now() / 1000) + 60,
@@ -210,7 +282,7 @@ export default function Home() {
       const res = await fetch(url);
       const data = await res.json();
 
-      if (data.result.length > 0) {
+      if (data.result && data.result.length > 0) {
         const hash = data.result[0].transaction_id.hash;
         setTransactionHash(hash);
         setTransactionStatus("Transaction successful!");
@@ -300,8 +372,8 @@ export default function Home() {
           <Typography variant="body1" gutterBottom>
             Wallet Balance: {walletBalance} TON
           </Typography>
-          {/* Hiển thị ví Jetton */}
-          <h4 className="text-2xl font-bold mb-4">Your List Jettons</h4>
+          {/* Hiển thị danh sách Jetton */}
+          <h4>Your List Jettons</h4>
           {jettons.length > 0 ? (
             <List>
               {jettons.map((jetton, index) => (
@@ -319,8 +391,55 @@ export default function Home() {
               ))}
             </List>
           ) : (
-            <Typography variant="body1">No Jettons in Wallet.</Typography>
+            <Typography>No Jettons in Wallet.</Typography>
           )}
+          <div>
+            <Typography variant="h6">Transfer Jettons</Typography>
+            <TextField
+              label="Select Jetton"
+              select
+              fullWidth
+              value={selectedJetton}
+              onChange={(e) => setSelectedJetton(e.target.value)}
+              margin="normal"
+            >
+              {jettons.map((jetton) => (
+                <MenuItem key={jetton.address} value={jetton.address}>
+                  {jetton.name} ({jetton.symbol})
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label="Recipient Address"
+              fullWidth
+              value={jettonRecipientAddress}
+              onChange={(e) => setJettonRecipientAddress(e.target.value)}
+              margin="normal"
+            />
+            <TextField
+              label="Amount"
+              fullWidth
+              value={jettonAmount}
+              onChange={(e) => setJettonAmount(e.target.value)}
+              margin="normal"
+            />
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={transferJetton}
+              style={{ marginTop: "10px" }}
+            >
+              Transfer Jetton
+            </Button>
+            {transactionStatus && (
+              <Alert
+                severity={isTransactionSuccessful ? "success" : "error"}
+                sx={{ mt: 2 }}
+              >
+                {transactionStatus}
+              </Alert>
+            )}
+          </div>
 
           <TextField
             label="Recipient Address"

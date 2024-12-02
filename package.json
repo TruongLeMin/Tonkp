@@ -15,10 +15,12 @@
     "@ton/core": "^0.57.0",
     "@tonconnect/sdk": "^3.0.5",
     "@tonconnect/ui-react": "^2.0.9",
-    "next": "14.2.8",
+    "bn.js": "^5.1.1",
+    "next": "^14.2.18",
     "react": "^18",
     "react-dom": "^18",
     "react-qr-code": "^2.0.15",
+    "ton-core": "^0.53.0",
     "tonweb": "^0.0.66"
   },
   "devDependencies": {
