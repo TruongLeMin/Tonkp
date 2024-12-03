@@ -5,6 +5,7 @@ import { beginCell, toNano, Address } from "@ton/core";
 import { useTonConnectUI } from "@tonconnect/ui-react";
 import TonWeb from "tonweb";
 import React from "react";
+import { TonApiClient } from "@ton-api/client";
 import {
   Button,
   Typography,
@@ -25,8 +26,7 @@ interface Jetton {
   name: string;
   symbol: string;
   image: string;
-  description: string;
-  address: string;
+  address: Address;
   balance: string;
 }
 
@@ -35,6 +35,11 @@ const tonWeb = new TonWeb(
     apiKey: "fdb0748fee7c4c05f66e5041d58473e0d2460242bcda0c2f3673b433d6647abe",
   })
 );
+
+const ta = new TonApiClient({
+  baseUrl: "https://testnet.tonapi.io",
+  apiKey: "",
+});
 
 const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert(
   props,
@@ -99,13 +104,15 @@ export default function Home() {
 
   const fetchJettonsWallet = async (walletAddress: string) => {
     try {
-      const response = await fetch(
-        `https://testnet.tonapi.io/v2/accounts/${walletAddress}/jettons`
-      );
-      const data = await response.json();
+      // Parse the wallet address to ensure it's valid
+      const parsedAddress = Address.parse(walletAddress);
 
-      if (data.balances && Array.isArray(data.balances)) {
-        const jettonList = data.balances.map((jetton: any) => ({
+      // Fetch Jetton balances using tonapi SDK
+      const res = await ta.accounts.getAccountJettonsBalances(parsedAddress);
+
+      if (res.balances && Array.isArray(res.balances)) {
+        // Map the jettons into a simplified format
+        const jettonList = res.balances.map((jetton) => ({
           name: jetton.jetton.name || "Unknown Jetton",
           symbol: jetton.jetton.symbol || "N/A",
           balance: (Number(jetton.balance) / 1e9).toFixed(2),
@@ -113,6 +120,7 @@ export default function Home() {
           address: jetton.jetton.address || "",
         }));
 
+        // Update the state or return the jetton list
         setJettons(jettonList);
       } else {
         console.error("No jettons found in wallet.");
@@ -404,11 +412,15 @@ export default function Home() {
               margin="normal"
             >
               {jettons.map((jetton) => (
-                <MenuItem key={jetton.address} value={jetton.address}>
+                <MenuItem
+                  key={jetton.address.toString()}
+                  value={jetton.address.toString()}
+                >
                   {jetton.name} ({jetton.symbol})
                 </MenuItem>
               ))}
             </TextField>
+
             <TextField
               label="Recipient Address"
               fullWidth
