@@ -91,6 +91,9 @@ export default function Home() {
     useState<string>("");
   const [jettonAmount, setJettonAmount] = useState<string>("");
   const [nfts, setNfts] = useState<any[]>([]); // State for NFTs
+  const [selectedNft, setSelectedNft] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [receiverAddress, setReceiverAddress] = useState(""); // For sending
 
   const handleWalletConnection = useCallback((address: string) => {
     setTonWalletAddress(address);
@@ -114,6 +117,16 @@ export default function Home() {
     }
     //fetchNFTByAddress();
   }, [tonConnectUI]);
+
+  const handleOpenModal = (nft: any) => {
+    setSelectedNft(nft);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setSelectedNft(null);
+    setIsModalOpen(false);
+  };
 
   const fetchWalletBalance = async (address: string) => {
     try {
@@ -211,75 +224,83 @@ export default function Home() {
     }
   };
 
-  // const fetchNftCollections = async () => {
-  //   try {
-  //     const response = await fetch(
-  //       "https://testnet.tonapi.io/v2/nfts/kQAIGSUKUatUucN02kkvtdllv64vKj8LeO9yEAOSXYkbsGfO"
-  //     );
-  //     if (!response.ok) {
-  //       throw new Error(`HTTP error! status: ${response.status}`);
-  //     }
-  //     const data = await response.json();
-
-  //     // Directly map the data based on the API response
-  //     const collections: NftCollection[] = [
-  //       {
-  //         address: data.address,
-  //         owner: {
-  //           address: data.owner?.address || "Unknown",
-  //           is_scam: data.owner?.is_scam || false,
-  //         },
-  //         metadata: {
-  //           name: data.metadata?.name || "Unknown",
-  //           image: data.metadata?.image || "",
-  //         },
-  //         previews: data.previews || [],
-  //       },
-  //     ];
-
-  //     setNftCollections(collections);
-  //   } catch (error) {
-  //     console.error("Failed to fetch NFT collections:", error);
-  //     setNftCollections([]); // Set an empty state in case of error
-  //   }
-  // };
-
   const fetchNFTByAddress = async (walletAddress: string) => {
-    console.log("Fetching NFTs for wallet address:", walletAddress);
-
     try {
       const response = await fetch(
         `https://testnet.tonapi.io/v2/accounts/${walletAddress}/nfts`
       );
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
 
-      console.log("Response status:", response.status);
+      if (data?.nft_items?.length > 0) {
+        const nftList = data.nft_items.map((nft: any) => ({
+          address: nft.address || "No address",
+          owner: nft.owner?.address || "No owner address",
+          name: nft.metadata?.name || "Unknown NFT",
+          image: nft.metadata?.image || "https://via.placeholder.com/200",
+          description: nft.metadata?.description || "No description available",
+        }));
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Full response data:", data);
-
-        // Ensure we check for the correct key 'nft_items'
-        if (data?.nft_items?.length > 0) {
-          const nftList = data.nft_items.map((nft: any) => ({
-            name: nft.metadata?.name || "Unknown",
-            symbol: nft.metadata?.symbol || "N/A",
-            image: nft.metadata?.image || "",
-            description: nft.metadata?.description || "No description",
-          }));
-
-          console.log("NFTs successfully parsed:", nftList);
-          setNfts(nftList);
-        } else {
-          console.log("No NFTs found for this wallet.");
-          setNfts([]); // Clear NFTs in case the wallet has none
-        }
+        setNfts(nftList); // Update state
       } else {
-        console.error("Error response when fetching NFTs.");
+        console.log("No NFTs found for this wallet.");
+        setNfts([]); // Clear NFTs in case there are none
       }
     } catch (error) {
-      console.error("An error occurred during fetch:", error);
+      console.error("Failed to fetch NFTs:", error);
+      setNfts([]); // Handle error case
     }
   };
+
+  // const fetchNFTByAddress = async (walletAddress: string) => {
+  //   console.log("Fetching NFTs for wallet address:", walletAddress);
+
+  //   try {
+  //     const response = await fetch(
+  //       `https://testnet.tonapi.io/v2/accounts/${walletAddress}/nfts`
+  //     );
+
+  //     console.log("Response status:", response.status);
+
+  //     if (response.ok) {
+  //       const data = await response.json();
+  //       console.log("Full response data:", data);
+
+  //       // Ensure we check for the correct key 'nft_items'
+  //       if (data?.nft_items?.length > 0) {
+  //         const nftList = data.nft_items.map((nft: any) => ({
+  //           const collections: NftCollection[] = [
+  //                   {
+  //                     address: data.address,
+  //                     owner: {
+  //                       address: data.owner?.address || "Unknown",
+  //                       is_scam: data.owner?.is_scam || false,
+  //                     },
+  //                     metadata: {
+  //                       name: data.metadata?.name || "Unknown",
+  //                       image: data.metadata?.image || "",
+  //                     },
+  //                     previews: data.previews || [],
+  //                   },
+  //                 ];
+
+  //                 setNftCollections(collections);
+  //         }));
+  //         console.log("NFTs successfully parsed:", nftList);
+  //         setNfts(nftList);
+  //       } else {
+  //         console.log("No NFTs found for this wallet.");
+  //         setNfts([]); // Clear NFTs in case the wallet has none
+  //       }
+  //     } else {
+  //       console.error("Error response when fetching NFTs.");
+  //     }
+  //   } catch (error) {
+  //     console.error("An error occurred during fetch:", error);
+  //   }
+  // };
 
   // load so du 5s
   useEffect(() => {
@@ -513,7 +534,9 @@ export default function Home() {
                       maxWidth: "calc(33.333% - 16px)",
                       boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
                       borderRadius: "8px",
+                      cursor: "pointer",
                     }}
+                    onClick={() => handleOpenModal(nft)}
                   >
                     <Card>
                       <CardMedia
@@ -541,7 +564,78 @@ export default function Home() {
               <Typography>No NFTs in Wallet.</Typography>
             )}
           </Box>
+          <Modal
+            open={isModalOpen}
+            onClose={handleCloseModal}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Box
+              sx={{
+                width: "300px",
+                backgroundColor: "white",
+                padding: "20px",
+                borderRadius: "8px",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
+              }}
+            >
+              {selectedNft && (
+                <>
+                  <Typography variant="h6" sx={{ mb: 2 }}>
+                    {selectedNft.name}
+                  </Typography>
+                  <CardMedia
+                    component="img"
+                    height="200"
+                    image={selectedNft.image}
+                    alt={selectedNft.name}
+                    sx={{
+                      objectFit: "cover",
+                      borderRadius: "8px",
+                      mb: 2,
+                    }}
+                  />
+                  <Typography variant="body2" sx={{ mb: 2 }}>
+                    <strong>Description:</strong>{" "}
+                    {selectedNft.description || "No description available"}
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 2 }}>
+                    <strong>Address:</strong>{" "}
+                    {sliceAddress(selectedNft.address) || "No address"}
+                  </Typography>
+                  <Typography variant="body2" sx={{ mb: 2 }}>
+                    <strong>Owner:</strong>{" "}
+                    {sliceAddress(selectedNft.owner) || "No owner address"}
+                  </Typography>
 
+                  {/* Send Section */}
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      <strong>Send to:</strong>
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      placeholder="Enter receiver's address"
+                      value={receiverAddress}
+                      onChange={(e) => setReceiverAddress(e.target.value)}
+                      sx={{ mb: 2 }}
+                    />
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      fullWidth
+                      onClick={() => handleSend(selectedNft, receiverAddress)}
+                    >
+                      Send
+                    </Button>
+                  </Box>
+                </>
+              )}
+            </Box>
+          </Modal>
           {/* Right Side - Wallet & Jettons Info Section */}
           <Box
             sx={{
