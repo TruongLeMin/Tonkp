@@ -16,6 +16,10 @@ import {
   List,
   ListItem,
   ListItemText,
+  Grid as Grid2,
+  Card,
+  CardMedia,
+  CardContent,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import MuiAlert, { AlertProps } from "@mui/material/Alert";
@@ -28,6 +32,23 @@ interface Jetton {
   image: string;
   address: Address;
   balance: string;
+}
+
+interface NftOwner {
+  address: string;
+  is_scam?: boolean;
+}
+
+interface NftMetadata {
+  name: string;
+  image: string;
+}
+
+interface NftCollection {
+  address: string;
+  owner?: NftOwner;
+  metadata: NftMetadata;
+  previews: { url: string }[];
 }
 
 const tonWeb = new TonWeb(
@@ -50,9 +71,10 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert(
 
 export default function Home() {
   const [tonConnectUI] = useTonConnectUI();
-  const [tonWalletAddress, setTonWalletAddress] = useState<string | null>(null);
+  const [tonWalletAddress, setTonWalletAddress] = useState<string>("");
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [jettons, setJettons] = useState<Jetton[]>([]);
+  const [nftCollections, setNftCollections] = useState<NftCollection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [transactionStatus, setTransactionStatus] = useState<string | null>(
@@ -69,6 +91,7 @@ export default function Home() {
   const [jettonRecipientAddress, setJettonRecipientAddress] =
     useState<string>("");
   const [jettonAmount, setJettonAmount] = useState<string>("");
+  const [nfts, setNfts] = useState<any[]>([]); // State for NFTs
 
   const handleWalletConnection = useCallback((address: string) => {
     setTonWalletAddress(address);
@@ -76,12 +99,13 @@ export default function Home() {
     setIsLoading(false);
     fetchWalletBalance(address);
     fetchJettonsWallet(address);
+    fetchNFTByAddress(address);
   }, []);
 
   const handleWalletDisconnection = useCallback(async () => {
     if (tonConnectUI.connected) {
       await tonConnectUI.disconnect();
-      setTonWalletAddress(null);
+      setTonWalletAddress("");
       setWalletBalance(null);
       setTransactionHash(null);
       console.log("Wallet disconnected successfully!");
@@ -89,6 +113,7 @@ export default function Home() {
     } else {
       console.log("Wallet is not connected, no action taken.");
     }
+    //fetchNFTByAddress();
   }, [tonConnectUI]);
 
   const fetchWalletBalance = async (address: string) => {
@@ -104,7 +129,7 @@ export default function Home() {
 
   const fetchJettonsWallet = async (walletAddress: string) => {
     try {
-      // Parse the wallet address to ensure it's valid
+      // Parse the wallet address
       const parsedAddress = Address.parse(walletAddress);
 
       // Fetch Jetton balances using tonapi SDK
@@ -117,7 +142,7 @@ export default function Home() {
           symbol: jetton.jetton.symbol || "N/A",
           balance: (Number(jetton.balance) / 1e9).toFixed(2),
           image: jetton.jetton.image || "",
-          address: jetton.jetton.address || "",
+          address: jetton.walletAddress.address || "",
         }));
 
         // Update the state or return the jetton list
@@ -140,14 +165,14 @@ export default function Home() {
       // Parse the recipient address and Jetton Wallet Contract
       const destinationAddress = Address.parse(jettonRecipientAddress);
       const jettonWalletContract = Address.parse(selectedJetton);
-
+      //const jettonWalletContract = Address.parse(se);
       console.log("jettonRecipientAddress", jettonRecipientAddress);
       console.log("selectedJetton", selectedJetton);
       // Create the forward payload (for optional comment or metadata)
-      const forwardPayload = beginCell()
-        .storeUint(0, 32) // opcode for comment
-        .storeStringTail("Jetton transfer from dApp") // Comment
-        .endCell();
+      // const forwardPayload = beginCell()
+      //   .storeUint(0, 32) // opcode for comment
+      //   .storeStringTail("Jetton transfer from dApp") // Comment
+      //   .endCell();
 
       // Build the Jetton transfer payload
       const body = beginCell()
@@ -155,20 +180,16 @@ export default function Home() {
         .storeUint(0, 64) // query_id (optional transaction identifier)
         .storeCoins(toNano(jettonAmount)) // Amount of Jettons
         .storeAddress(destinationAddress) // Recipient address
-        .storeAddress(
-          Address.parse(
-            "0:0000000000000000000000000000000000000000000000000000000000000000"
-          )
-        ) // Response address
-        .storeBit(0) // No custom payload
-        .storeCoins(toNano("0.02")) // Transaction fees
-        .storeBit(1) // Forward payload stored as reference
-        .storeRef(forwardPayload) // Include forwardPayload
+        .storeAddress(Address.parse(tonWalletAddress))
+        .storeUint(0, 1) // No custom payload
+        .storeCoins(toNano("0.00000001")) // Transaction fees
+        .storeUint(0, 1) // Forward payload stored as reference
+        //        .storeRef(forwardPayload) // Include forwardPayload
         .endCell();
 
       // Define the transaction
       const transaction = {
-        validUntil: Math.floor(Date.now() / 1000) + 360, // Transaction expires after 360 seconds
+        validUntil: Math.floor(Date.now() / 1000) + 60, // Transaction expires after 60 seconds
         messages: [
           {
             address: jettonWalletContract.toString(), // Jetton Wallet Contract Address
@@ -191,12 +212,83 @@ export default function Home() {
     }
   };
 
+  // const fetchNftCollections = async () => {
+  //   try {
+  //     const response = await fetch(
+  //       "https://testnet.tonapi.io/v2/nfts/kQAIGSUKUatUucN02kkvtdllv64vKj8LeO9yEAOSXYkbsGfO"
+  //     );
+  //     if (!response.ok) {
+  //       throw new Error(`HTTP error! status: ${response.status}`);
+  //     }
+  //     const data = await response.json();
+
+  //     // Directly map the data based on the API response
+  //     const collections: NftCollection[] = [
+  //       {
+  //         address: data.address,
+  //         owner: {
+  //           address: data.owner?.address || "Unknown",
+  //           is_scam: data.owner?.is_scam || false,
+  //         },
+  //         metadata: {
+  //           name: data.metadata?.name || "Unknown",
+  //           image: data.metadata?.image || "",
+  //         },
+  //         previews: data.previews || [],
+  //       },
+  //     ];
+
+  //     setNftCollections(collections);
+  //   } catch (error) {
+  //     console.error("Failed to fetch NFT collections:", error);
+  //     setNftCollections([]); // Set an empty state in case of error
+  //   }
+  // };
+
+  const fetchNFTByAddress = async (walletAddress: string) => {
+    console.log("Fetching NFTs for wallet address:", walletAddress);
+
+    try {
+      const response = await fetch(
+        `https://testnet.tonapi.io/v2/accounts/${walletAddress}/nfts`
+      );
+
+      console.log("Response status:", response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Full response data:", data);
+
+        // Ensure we check for the correct key 'nft_items'
+        if (data?.nft_items?.length > 0) {
+          const nftList = data.nft_items.map((nft: any) => ({
+            name: nft.metadata?.name || "Unknown",
+            symbol: nft.metadata?.symbol || "N/A",
+            image: nft.metadata?.image || "",
+            description: nft.metadata?.description || "No description",
+          }));
+
+          console.log("NFTs successfully parsed:", nftList);
+          setNfts(nftList);
+        } else {
+          console.log("No NFTs found for this wallet.");
+          setNfts([]); // Clear NFTs in case the wallet has none
+        }
+      } else {
+        console.error("Error response when fetching NFTs.");
+      }
+    } catch (error) {
+      console.error("An error occurred during fetch:", error);
+    }
+  };
+
   // load so du 5s
   useEffect(() => {
     const interval = setInterval(() => {
       if (tonWalletAddress) {
         fetchWalletBalance(tonWalletAddress);
         fetchJettonsWallet(tonWalletAddress);
+        fetchNFTByAddress(tonWalletAddress);
       }
     }, 5000);
 
@@ -318,7 +410,6 @@ export default function Home() {
   const formatAddress = (address: string) => {
     try {
       const tonAddress = new TonWeb.utils.Address(address);
-      // false for non-bounceable
       const friendlyAddress = tonAddress.toString(true, true, false, true); // base64,...,Bounceable=true, testnet=true
       return `${friendlyAddress.slice(0, 4)}...${friendlyAddress.slice(-4)}`;
     } catch (error) {
@@ -342,174 +433,266 @@ export default function Home() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center">
-      <h1 className="text-4xl font-bold mb-8">TON Connect</h1>
-      {tonWalletAddress ? (
-        <div>
-          <Typography variant="h6" gutterBottom>
-            Connected Wallet: {formatAddress(tonWalletAddress)}
-            <IconButton
-              onClick={handleCopyAddress}
-              color="primary"
-              style={{ marginLeft: "10px" }}
-            >
-              <ContentCopyIcon />
-            </IconButton>
-            <Button
-              variant="contained"
-              color="error"
-              onClick={handleWalletDisconnection}
-              style={{ marginLeft: "10px" }}
-            >
-              Disconnect Wallet
-            </Button>
-            <Button
-              variant="outlined"
-              color="primary"
-              onClick={handleShowQRCode}
-              style={{ marginLeft: "10px" }}
-            >
-              {showQRCode ? "Hide QR Code" : "Show QR Code"}
-            </Button>
-          </Typography>
-          {showQRCode && (
-            <Box my={2}>
-              <QRCode value={tonWalletAddress} />
-            </Box>
-          )}
-          <Typography variant="body1" gutterBottom>
-            Wallet Balance: {walletBalance} TON
-          </Typography>
-          {/* Hiển thị danh sách Jetton */}
-          <h4>Your List Jettons</h4>
-          {jettons.length > 0 ? (
-            <List>
-              {jettons.map((jetton, index) => (
-                <ListItem key={index}>
-                  <img
-                    src={jetton.image}
-                    alt={jetton.name}
-                    style={{ width: 50, height: 50, marginRight: 10 }}
-                  />
-                  <ListItemText
-                    primary={`${jetton.name} (${jetton.symbol})`}
-                    secondary={`Balance: ${jetton.balance}`}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          ) : (
-            <Typography>No Jettons in Wallet.</Typography>
-          )}
-          <div>
-            <Typography variant="h6">Transfer Jettons</Typography>
-            <TextField
-              label="Select Jetton"
-              select
-              fullWidth
-              value={selectedJetton}
-              onChange={(e) => setSelectedJetton(e.target.value)}
-              margin="normal"
-            >
-              {jettons.map((jetton) => (
-                <MenuItem
-                  key={jetton.address.toString()}
-                  value={jetton.address.toString()}
-                >
-                  {jetton.name} ({jetton.symbol})
-                </MenuItem>
-              ))}
-            </TextField>
-
-            <TextField
-              label="Recipient Address"
-              fullWidth
-              value={jettonRecipientAddress}
-              onChange={(e) => setJettonRecipientAddress(e.target.value)}
-              margin="normal"
-            />
-            <TextField
-              label="Amount"
-              fullWidth
-              value={jettonAmount}
-              onChange={(e) => setJettonAmount(e.target.value)}
-              margin="normal"
-            />
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={transferJetton}
-              style={{ marginTop: "10px" }}
-            >
-              Transfer Jetton
-            </Button>
-            {transactionStatus && (
-              <Alert
-                severity={isTransactionSuccessful ? "success" : "error"}
-                sx={{ mt: 2 }}
-              >
-                {transactionStatus}
-              </Alert>
-            )}
-          </div>
-
-          <TextField
-            label="Recipient Address"
-            variant="outlined"
-            fullWidth
-            value={recipientAddress}
-            onChange={(e) => setRecipientAddress(e.target.value)}
-            margin="normal"
-          />
-          <TextField
-            label="Amount in TON"
-            variant="outlined"
-            fullWidth
-            type="number"
-            value={amountTON}
-            onChange={(e) => setAmountTON(e.target.value)}
-            margin="normal"
-          />
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={transferWithHashRetrieval}
-            style={{ marginTop: "10px" }}
+    <div className="min-h-screen bg-gray-100">
+      <div className="container mx-auto p-6">
+        <Typography
+          variant="h4"
+          sx={{
+            color: "linear-gradient(90deg, #6a11cb 0%, #2575fc 100%)",
+            fontWeight: "bold",
+            transition: "transform 0.3s ease, color 0.3s ease",
+            "&:hover": {
+              transform: "scale(1.1)",
+              color: "#ff9800",
+            },
+          }}
+        >
+          Welcome to NFTs Marketplace
+        </Typography>
+        {/* Main Content Area */}
+        {tonWalletAddress ? (
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "row",
+              width: "100%",
+              height: "calc(100vh - 64px)",
+            }}
           >
-            Transfer TON
-          </Button>
-          {transactionStatus && (
-            <Alert
-              severity={isTransactionSuccessful ? "success" : "info"}
-              sx={{ mt: 2 }}
+            {/* Left Side - NFTs Section */}
+            <Box
+              sx={{
+                flex: 1,
+                backgroundColor: "#f0f0f0",
+                padding: "20px",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                overflowY: "auto",
+              }}
             >
-              {transactionStatus}
-            </Alert>
-          )}
-          {/* {transactionHash && (
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                Your NFTs
+              </Typography>
+              {nfts.length > 0 ? (
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 2,
+                  }}
+                >
+                  {nfts.map((nft, index) => (
+                    <Box
+                      key={index}
+                      sx={{
+                        flex: "1 1 calc(33.333% - 16px)", // Responsive design: 3 items per row
+                        maxWidth: "calc(33.333% - 16px)",
+                        boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+                        borderRadius: "8px",
+                      }}
+                    >
+                      <Card>
+                        <CardMedia
+                          component="img"
+                          height="200"
+                          image={nft.image}
+                          alt={nft.name}
+                          sx={{
+                            objectFit: "cover",
+                          }}
+                        />
+                        <CardContent>
+                          <Typography gutterBottom variant="h6" component="div">
+                            {nft.name}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {nft.description || "No description available"}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Box>
+                  ))}
+                </Box>
+              ) : (
+                <Typography>No NFTs in Wallet.</Typography>
+              )}
+            </Box>
+          </Box>
+        ) : (
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              height: "calc(100vh - 64px)",
+            }}
+          ></Box>
+        )}
+        <main className="mb-8 flex items-center justify-between">
+          {tonWalletAddress ? (
+            <div>
+              <Typography variant="h6" gutterBottom>
+                Connected Wallet: {formatAddress(tonWalletAddress)}
+                <IconButton
+                  onClick={handleCopyAddress}
+                  color="primary"
+                  style={{ marginLeft: "10px" }}
+                >
+                  <ContentCopyIcon />
+                </IconButton>
+                <Button
+                  variant="contained"
+                  color="error"
+                  onClick={handleWalletDisconnection}
+                  style={{ marginLeft: "10px" }}
+                >
+                  Disconnect Wallet
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  onClick={handleShowQRCode}
+                  style={{ marginLeft: "10px" }}
+                >
+                  {showQRCode ? "Hide QR Code" : "Show QR Code"}
+                </Button>
+              </Typography>
+              {showQRCode && (
+                <Box my={2}>
+                  <QRCode value={tonWalletAddress} />
+                </Box>
+              )}
+              <Typography variant="body1" gutterBottom>
+                Wallet Balance: {walletBalance} TON
+              </Typography>
+              {/* Hiển thị danh sách Jetton */}
+              <h4>Your List Jettons</h4>
+              {jettons.length > 0 ? (
+                <List>
+                  {jettons.map((jetton, index) => (
+                    <ListItem key={index}>
+                      <img
+                        src={jetton.image}
+                        alt={jetton.name}
+                        style={{ width: 50, height: 50, marginRight: 10 }}
+                      />
+                      <ListItemText
+                        primary={`${jetton.name} (${jetton.symbol})`}
+                        secondary={`Balance: ${jetton.balance}`}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Typography>No Jettons in Wallet.</Typography>
+              )}
+              <div>
+                <Typography variant="h6">Transfer Jettons</Typography>
+                <TextField
+                  label="Select Jetton"
+                  select
+                  value={selectedJetton}
+                  onChange={(e) => setSelectedJetton(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                >
+                  {jettons.map((jetton, index) => (
+                    <MenuItem key={index} value={jetton.address.toString()}>
+                      {jetton.name} ({jetton.symbol})
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  label="Recipient Address"
+                  value={jettonRecipientAddress}
+                  onChange={(e) => setJettonRecipientAddress(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                />
+                <TextField
+                  label="Amount to Transfer"
+                  value={jettonAmount}
+                  onChange={(e) => setJettonAmount(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={transferJetton}
+                  disabled={
+                    !selectedJetton || !jettonRecipientAddress || !jettonAmount
+                  }
+                  style={{ marginTop: "10px" }}
+                >
+                  Transfer Jettons
+                </Button>
+                <Typography
+                  variant="body1"
+                  color="textSecondary"
+                  style={{ marginTop: "10px" }}
+                >
+                  {transactionStatus}
+                </Typography>
+              </div>
+              <TextField
+                label="Recipient Address"
+                variant="outlined"
+                fullWidth
+                value={recipientAddress}
+                onChange={(e) => setRecipientAddress(e.target.value)}
+                margin="normal"
+              />
+              <TextField
+                label="Amount in TON"
+                variant="outlined"
+                fullWidth
+                type="number"
+                value={amountTON}
+                onChange={(e) => setAmountTON(e.target.value)}
+                margin="normal"
+              />
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={transferWithHashRetrieval}
+                style={{ marginTop: "10px" }}
+              >
+                Transfer TON
+              </Button>
+              {transactionStatus && (
+                <Alert
+                  severity={isTransactionSuccessful ? "success" : "info"}
+                  sx={{ mt: 2 }}
+                >
+                  {transactionStatus}
+                </Alert>
+              )}
+              {/* {transactionHash && (
             <Typography variant="body1" gutterBottom>
               Transaction Hash: {transactionHash}
             </Typography>
           )} */}
-        </div>
-      ) : (
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleWalletAction}
-        >
-          Connect Wallet
-        </Button>
-      )}
-      <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={2000}
-        onClose={() => setSnackbarOpen(false)}
-      >
-        <Alert severity="success" onClose={() => setSnackbarOpen(false)}>
-          Address copied!
-        </Alert>
-      </Snackbar>
-    </main>
+            </div>
+          ) : (
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleWalletAction}
+            >
+              Connect Wallet
+            </Button>
+          )}
+          <Snackbar
+            open={snackbarOpen}
+            autoHideDuration={2000}
+            onClose={() => setSnackbarOpen(false)}
+          >
+            <Alert onClose={() => setSnackbarOpen(false)} severity="success">
+              Address copied to clipboard!
+            </Alert>
+          </Snackbar>
+        </main>
+      </div>
+    </div>
   );
 }
