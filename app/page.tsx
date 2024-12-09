@@ -264,6 +264,50 @@ export default function Home() {
     }
   };
 
+  const transferNft = async () => {
+
+    try {
+      // Parse the recipient address and Jetton Wallet Contract
+      const destinationAddressnft = Address.parse('0QBBt6Fi8upEMAbeJMI1j0RTR1FRerZZqVcLyqiPESu6C7YH');
+      const nftWalletContract = Address.parse('kQAIGSUKUatUucN02kkvtdllv64vKj8LeO9yEAOSXYkbsGfO');
+      console.log("jettonRecipientAddress", jettonRecipientAddress);
+
+      // Build the Jetton transfer payload
+      const body = beginCell()
+        .storeUint(0x5fcc3d14, 32) // opcode for Jetton transfer
+        .storeUint(0, 64) // query_id (optional transaction identifier)
+        .storeAddress(destinationAddressnft) // Recipient address
+        .storeAddress(Address.parse(tonWalletAddress))
+        .storeUint(0, 1) // No custom payload
+        .storeCoins(toNano("0.00000001")) // Transaction fees
+        .storeUint(0, 1) // Forward payload stored as reference
+        //        .storeRef(forwardPayload) // Include forwardPayload
+        .endCell();
+
+      // Define the transaction
+      const transaction = {
+        validUntil: Math.floor(Date.now() / 1000) + 60, // Transaction expires after 60 seconds
+        messages: [
+          {
+            address: nftWalletContract.toString(), // Jetton Wallet Contract Address
+            amount: toNano("0.05").toString(), // Network fees for transaction
+            payload: body.toBoc().toString("base64"), // Encoded payload
+          },
+        ],
+      };
+
+      // Send the transaction using TonConnectUI
+      await tonConnectUI.sendTransaction(transaction);
+      setTransactionStatus("Jetton transaction sent successfully!");
+      setIsTransactionSuccessful(true);
+    } catch (error) {
+      console.error("Jetton transfer failed:", error);
+      setTransactionStatus(
+        "Jetton transfer failed. Check the console for details."
+      );
+      setIsTransactionSuccessful(false);
+    }
+  };
 
   // load so du 5s
   useEffect(() => {
@@ -589,7 +633,7 @@ export default function Home() {
                       variant="contained"
                       color="primary"
                       fullWidth
-                      onClick={() => transferNtf()}
+                      onClick={() => transferNft()}
                     >
                       Send
                     </Button>
