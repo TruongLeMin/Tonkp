@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { beginCell, toNano, Address } from "@ton/core";
+import { beginCell, toNano, Address, address } from "@ton/core";
 import { useTonConnectUI } from "@tonconnect/ui-react";
 import TonWeb from "tonweb";
 import React from "react";
@@ -99,8 +99,14 @@ export default function Home() {
     useState<string>("");
   const [jettonAmount, setJettonAmount] = useState<string>("");
   const [nfts, setNfts] = useState<any[]>([]); // State for NFTs
-  const [selectedNft, setSelectedNft] = useState<Nft | null>(null); // Có thể null khi chưa chọn NFT nào
-
+ // const [selectedNft, setSelectedNft] = useState<Nft | null>(null); // Có thể null khi chưa chọn NFT nào
+  const [selectedNft, setSelectedNft] = useState<Nft>({
+    address: "",
+    owner: "",
+    name: "",
+    image: "",
+    description: "",
+  });
   // const [selectedNft, setSelectedNft] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [receiverAddress, setReceiverAddress] = useState(""); // For sending
@@ -134,7 +140,7 @@ export default function Home() {
   };
 
   const handleCloseModal = () => {
-    setSelectedNft(null);
+   // setSelectedNft();
     setIsModalOpen(false);
   };
 
@@ -268,9 +274,12 @@ export default function Home() {
 
     try {
       // Parse the recipient address and Jetton Wallet Contract
-      const destinationAddressnft = Address.parse('0QBBt6Fi8upEMAbeJMI1j0RTR1FRerZZqVcLyqiPESu6C7YH');
-      const nftWalletContract = Address.parse('kQAIGSUKUatUucN02kkvtdllv64vKj8LeO9yEAOSXYkbsGfO');
+      const destinationAddressnft = Address.parse(receiverAddress);
+     // const nftWalletContract = Address.parse('kQDKBKLNBNCnNaeAevQP1oLj-RM8Z6s2bs6_XQfnriALGZVR');
+
+      const nftWalletContract = Address.parse(selectedNft.address.toString());
       console.log("jettonRecipientAddress", jettonRecipientAddress);
+      console.log("receiverAddress", receiverAddress);
 
       // Build the Jetton transfer payload
       const body = beginCell()
